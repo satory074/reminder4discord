@@ -1,65 +1,91 @@
+function updateTrigger() {
+  // 既存のトリガーをすべて削除
+  ScriptApp.getProjectTriggers().forEach(trigger => ScriptApp.deleteTrigger(trigger));
+
+  // 次の実行時刻を計算（次の0秒）
+  let triggerDate = new Date();
+  triggerDate.setSeconds(0);
+  triggerDate.setMilliseconds(0);
+  triggerDate.setMinutes(triggerDate.getMinutes() + 1);
+
+  // 新しいトリガーを作成（次の0秒に実行）
+  ScriptApp.newTrigger('doGet')
+    .timeBased()
+    .at(triggerDate)
+    .create();
+}
+
 function doGet(e) {
-  const formatDate = (date)=>{
-    let formatted_date = date.getFullYear()
-                          + "/"
-                          + (date.getMonth() + 1)
-                          + "/" + date.getDate()
-                          + " "
-                          + date.getHours()
-                          + ":"
-                          + date.getMinutes()
-                          + ":00"
-                        ;
-    return formatted_date;
-  }
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const remindersSheet = spreadsheet.getSheetByName('reminders');
+  const configSheet = spreadsheet.getSheetByName('config');
 
-  let spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  let reminders_sheet = spreadsheet.getSheetByName('reminders');
-  let config_sheet = spreadsheet.getSheetByName('config');
-  
-  let now = new Date();
+  const now = new Date();
 
-  for (let i=2; i <= reminders_sheet.getLastRow(); i++){
-    // Get remind data
-    let date_ = reminders_sheet.getRange(i, 1).getValue();
-    let content = reminders_sheet.getRange(i, 2).getValue();
-    let interval_number = reminders_sheet.getRange(i, 3).getValue();
-    let interval_unit = reminders_sheet.getRange(i, 4).getValue();
-    let webhook = reminders_sheet.getRange(i, 6).getValue();
+  // 設定値をキャッシュ
+  const username = configSheet.getRange("A2").getValue();
+  const avatarUrl = configSheet.getRange("B2").getValue();
 
-    let new_date = date_;
-    if (date_ <= now){
-      // Calclaation new date
-      if (interval_unit == 'year'){
-        new_date.setYear(date_.getFullYear() + interval_number);
-      } else if (interval_unit == 'month'){
-        new_date.setMonth(date_.getMonth() + interval_number);
-      } else if (interval_unit == 'week'){
-        new_date.setDate(date_.getDate() + interval_number * 7);
-      } else if (interval_unit == 'day'){
-        new_date.setDate(date_.getDate() + interval_number);
-      } else if (interval_unit == 'hour'){
-        new_date.setHours(date_.getHours() + interval_number);
-      } else if (interval_unit == 'minute'){
-        new_date.setMinutes(date_.getMinutes() + interval_number);
-      }
+  const lastRow = remindersSheet.getLastRow();
+  const dataRange = remindersSheet.getRange(2, 1, lastRow - 1, 6);
+  const data = dataRange.getValues();
 
-      // Post data
-      const data = {
-        username: config_sheet.getRange(2, 1).getValue(),
-        avatar_url: config_sheet.getRange(2, 2).getValue(),
+  data.forEach((row, index) => {
+    let [date_, content, intervalNumber, intervalUnit, , webhook] = row;
+
+    if (!(date_ instanceof Date)) {
+      date_ = new Date(date_);
+    }
+
+    if (date_ <= now) {
+      // データを送信
+      const payload = {
+        username: username,
+        avatar_url: avatarUrl,
         content: content,
       };
 
-      // Post via webhook
-      UrlFetchApp.fetch(webhook, {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify(data),
-      });
+      // Webhook経由でポスト
+      try {
+        UrlFetchApp.fetch(webhook, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+        });
+      } catch (error) {
+        Logger.log(`Webhook送信エラー (行 ${index + 2}): ${error}`);
+      }
 
-      // Update
-      reminders_sheet.getRange(i, 1).setValue(formatDate(new_date));
+      // NextTimeを更新
+      let newDate = new Date(now);
+      switch (intervalUnit) {
+        case 'year':
+          newDate.setFullYear(newDate.getFullYear() + intervalNumber);
+          break;
+        case 'month':
+          newDate.setMonth(newDate.getMonth() + intervalNumber);
+          break;
+        case 'week':
+          newDate.setDate(newDate.getDate() + intervalNumber * 7);
+          break;
+        case 'day':
+          newDate.setDate(newDate.getDate() + intervalNumber);
+          break;
+        case 'hour':
+          newDate.setHours(newDate.getHours() + intervalNumber);
+          break;
+        case 'minute':
+          newDate.setMinutes(newDate.getMinutes() + intervalNumber);
+          break;
+      }
+      newDate.setSeconds(0);
+      newDate.setMilliseconds(0);
+
+      // シートの該当セルを更新
+      remindersSheet.getRange(index + 2, 1).setValue(newDate);
+      remindersSheet.getRange(index + 2, 1).setNumberFormat("yyyy/MM/dd HH:mm:ss");
     }
-  }
+  });
+
+  updateTrigger();
 }
