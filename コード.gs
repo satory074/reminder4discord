@@ -1,21 +1,4 @@
-function updateTrigger() {
-  // 既存のトリガーをすべて削除
-  ScriptApp.getProjectTriggers().forEach(trigger => ScriptApp.deleteTrigger(trigger));
-
-  // 次の実行時刻を計算（次の0秒）
-  let triggerDate = new Date();
-  triggerDate.setSeconds(0);
-  triggerDate.setMilliseconds(0);
-  triggerDate.setMinutes(triggerDate.getMinutes() + 1);
-
-  // 新しいトリガーを作成（次の0秒に実行）
-  ScriptApp.newTrigger('doGet')
-    .timeBased()
-    .at(triggerDate)
-    .create();
-}
-
-function doGet(e) {
+function main() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const remindersSheet = spreadsheet.getSheetByName('reminders');
   const configSheet = spreadsheet.getSheetByName('config');
@@ -57,7 +40,7 @@ function doGet(e) {
       }
 
       // NextTimeを更新
-      let newDate = new Date(now);
+      let newDate = date_;
       switch (intervalUnit) {
         case 'year':
           newDate.setFullYear(newDate.getFullYear() + intervalNumber);
@@ -86,6 +69,4 @@ function doGet(e) {
       remindersSheet.getRange(index + 2, 1).setNumberFormat("yyyy/MM/dd HH:mm:ss");
     }
   });
-
-  updateTrigger();
 }
